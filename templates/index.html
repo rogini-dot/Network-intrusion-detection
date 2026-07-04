@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Traffic Scope — Network Intrusion Detection</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --void: #080d16;
+            --panel: #0f1729;
+            --panel-2: #0a121f;
+            --hair: #1c2740;
+            --hair-bright: rgba(79, 216, 232, 0.38);
+            --signal: #ff6a3d;
+            --signal-dim: #b34f2e;
+            --cyan: #4fd8e8;
+            --ok: #35d18a;
+            --alert: #ff3f5e;
+            --amber: #ffb020;
+            --paper: #e9edf4;
+            --dim: #64708c;
+            --dim-2: #3d4863;
+            --display: 'Space Grotesk', sans-serif;
+            --mono: 'IBM Plex Mono', monospace;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+        }
+
+        body {
+            background: var(--void);
+            color: var(--paper);
+            font-family: var(--mono);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 0 20px 56px;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(79,216,232,0.045) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(79,216,232,0.045) 1px, transparent 1px);
+            background-size: 34px 34px;
+            mask-image: radial-gradient(ellipse 70% 55% at 50% 0%, black 0%, transparent 75%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .wrapper {
+            width: 100%;
+            max-width: 800px;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* ---------- Ambient scope strip (signature element) ---------- */
+        .scope-strip {
+            width: 100%;
+            height: 64px;
+            overflow: hidden;
+            border-bottom: 1px solid var(--hair);
+            margin-bottom: 36px;
+            position: relative;
+        }
+
+        .scope-strip::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(90deg, var(--void) 0%, transparent 8%, transparent 92%, var(--void) 100%);
+            pointer-events: none;
+        }
+
+        .scope-track {
+            display: flex;
+            width: 200%;
+            height: 100%;
+            animation: scroll-trace 9s linear infinite;
+        }
+
+        @keyframes scroll-trace { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+        .scope-track svg { width: 50%; height: 100%; flex-shrink: 0; display: block; }
+
+        .scope-track path {
+            fill: none;
+            stroke: var(--cyan);
+            stroke-width: 1.6;
+            opacity: 0.55;
+            transition: stroke 0.4s ease;
+        }
+
+        .scope-strip.sig-attack path { stroke: var(--alert); opacity: 0.8; }
+        .scope-strip.sig-safe path   { stroke: var(--ok); opacity: 0.65; }
+        .scope-strip.sig-warn path   { stroke: var(--amber); opacity: 0.75; }
+
+        /* ---------- Header ---------- */
+        .header { text-align: center; margin-bottom: 34px; padding: 0 8px; }
+
+        .header .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 10.5px;
+            color: var(--cyan);
+            letter-spacing: 2.5px;
+            border: 1px solid var(--hair);
+            padding: 5px 14px 5px 11px;
+            border-radius: 2px;
+            margin-bottom: 22px;
+            text-transform: uppercase;
+        }
+
+        .badge .ping {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: var(--cyan);
+            animation: blink 1.6s ease-in-out infinite;
+            flex-shrink: 0;
+        }
+
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
+
+        .header h1 {
+            font-family: var(--display);
+            font-size: clamp(30px, 5.4vw, 44px);
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            color: #fff;
+            text-transform: uppercase;
+            line-height: 1.08;
+        }
+
+        .header h1 em {
+            font-style: normal;
+            color: var(--signal);
+        }
+
+        .header p {
+            font-size: 13px;
+            color: var(--dim);
+            margin-top: 12px;
+            letter-spacing: 0.3px;
+        }
+
+        /* ---------- Panel ---------- */
+        .panel {
+            background: var(--panel);
+            border: 1px solid var(--hair);
+            border-radius: 3px;
+            padding: 34px 30px;
+            position: relative;
+        }
+
+        .corner {
+            position: absolute;
+            width: 16px; height: 16px;
+            border-color: var(--cyan);
+            border-style: solid;
+            opacity: 0.5;
+        }
+        .corner.tl { top: -1px; left: -1px; border-width: 2px 0 0 2px; }
+        .corner.tr { top: -1px; right: -1px; border-width: 2px 2px 0 0; }
+        .corner.bl { bottom: -1px; left: -1px; border-width: 0 0 2px 2px; }
+        .corner.br { bottom: -1px; right: -1px; border-width: 0 2px 2px 0; }
+
+        .section-label {
+            font-size: 10.5px;
+            letter-spacing: 3px;
+            color: var(--dim);
+            text-transform: uppercase;
+            margin-bottom: 18px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .section-label::after { content: ''; flex: 1; height: 1px; background: var(--hair); }
+
+        /* ---------- Upload port ---------- */
+        .upload-zone {
+            border: 1.5px dashed var(--hair);
+            border-radius: 3px;
+            padding: 40px 20px 34px;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.25s, background 0.25s;
+            position: relative;
+            background: var(--panel-2);
+        }
+
+        .upload-zone:hover, .upload-zone:focus-within {
+            border-color: var(--hair-bright);
+            background: rgba(79,216,232,0.035);
+        }
+
+        .upload-zone input[type="file"] {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+            width: 100%;
+            height: 100%;
+        }
+
+        .port-icon { margin-bottom: 16px; }
+        .port-icon svg { width: 40px; height: 40px; }
+        .port-icon circle { fill: none; stroke: var(--cyan); stroke-width: 1.4; opacity: 0.7; }
+        .port-icon path { fill: none; stroke: var(--cyan); stroke-width: 1.4; opacity: 0.9; }
+        .port-icon .pin { fill: var(--cyan); opacity: 0.9; }
+
+        .upload-zone h3 {
+            font-family: var(--display);
+            font-size: 17px;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+            color: #fff;
+            margin-bottom: 7px;
+        }
+
+        .upload-zone p {
+            font-size: 11.5px;
+            color: var(--dim);
+            letter-spacing: 0.3px;
+        }
+
+        #file-name {
+            margin-top: 14px;
+            font-size: 12px;
+            color: var(--cyan);
+            min-height: 18px;
+            text-align: center;
+        }
+
+        /* ---------- Button ---------- */
+        .btn {
+            display: block;
+            width: 100%;
+            margin-top: 22px;
+            padding: 16px;
+            background: transparent;
+            border: 1px solid var(--signal);
+            color: var(--signal);
+            font-family: var(--display);
+            font-size: 15px;
+            font-weight: 700;
+            letter-spacing: 3.5px;
+            text-transform: uppercase;
+            cursor: pointer;
+            border-radius: 2px;
+            transition: color 0.25s, box-shadow 0.25s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: var(--signal);
+            transform: translateX(-100%);
+            transition: transform 0.3s ease;
+            z-index: 0;
+        }
+
+        .btn:hover::after, .btn:focus-visible::after { transform: translateX(0); }
+        .btn:hover, .btn:focus-visible { color: #0a0f1a; }
+        .btn:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
+        .btn span { position: relative; z-index: 1; }
+
+        /* ---------- Verdict readout ---------- */
+        .result-banner {
+            margin-top: 26px;
+            padding: 15px 18px;
+            border-radius: 2px;
+            font-size: 13.5px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            animation: fade-in 0.4s ease;
+            letter-spacing: 0.2px;
+        }
+
+        @keyframes fade-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+        .result-banner.attack { background: rgba(255,63,94,0.08); border: 1px solid rgba(255,63,94,0.35); color: var(--alert); }
+        .result-banner.safe   { background: rgba(53,209,138,0.07); border: 1px solid rgba(53,209,138,0.3); color: var(--ok); }
+        .result-banner.error  { background: rgba(255,176,32,0.08); border: 1px solid rgba(255,176,32,0.32); color: var(--amber); }
+
+        .result-banner .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; animation: blink 1.3s ease-in-out infinite; }
+        .result-banner.attack .dot { background: var(--alert); }
+        .result-banner.safe .dot   { background: var(--ok); }
+        .result-banner.error .dot  { background: var(--amber); }
+
+        /* ---------- Signal readout meter (stats) ---------- */
+        .readout {
+            margin-top: 28px;
+            animation: fade-in 0.5s ease 0.1s both;
+        }
+
+        .meter {
+            display: flex;
+            width: 100%;
+            height: 10px;
+            border-radius: 2px;
+            overflow: hidden;
+            background: var(--panel-2);
+            border: 1px solid var(--hair);
+        }
+
+        .meter .m-normal { background: var(--ok); opacity: 0.75; height: 100%; flex-basis: 0%; flex-shrink: 0; }
+        .meter .m-attack { background: var(--alert); opacity: 0.85; height: 100%; flex-basis: 0%; flex-shrink: 0; }
+
+        .readout-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            margin-top: 18px;
+        }
+
+        @media (max-width: 560px) { .readout-grid { grid-template-columns: repeat(2, 1fr); row-gap: 18px; } }
+
+        .r-item { text-align: center; border-left: 1px solid var(--hair); }
+        .r-item:first-child { border-left: none; }
+
+        .r-label {
+            font-size: 9.5px;
+            letter-spacing: 2px;
+            color: var(--dim);
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+
+        .r-value {
+            font-family: var(--display);
+            font-size: 25px;
+            font-weight: 700;
+            color: #fff;
+            line-height: 1;
+        }
+
+        .r-item.c-ok .r-value    { color: var(--ok); }
+        .r-item.c-alert .r-value { color: var(--alert); }
+        .r-item.c-amber .r-value { color: var(--amber); }
+
+        .footer {
+            margin-top: 30px;
+            text-align: center;
+            font-size: 10.5px;
+            color: var(--dim-2);
+            letter-spacing: 1px;
+        }
+    </style>
+</head>
+<body>
+    <div class="wrapper">
+
+        <div class="scope-strip" id="scopeStrip">
+            <div class="scope-track">
+                <svg viewBox="0 0 400 64" preserveAspectRatio="none"><path d="M0,32 L30,32 L38,32 L44,8 L50,56 L56,32 L64,32 L90,32 L98,32 L104,14 L110,50 L116,32 L124,32 L150,32 L158,32 L164,20 L170,44 L176,32 L184,32 L210,32 L218,32 L224,6 L230,58 L236,32 L244,32 L270,32 L278,32 L284,16 L290,48 L296,32 L304,32 L330,32 L338,32 L344,10 L350,54 L356,32 L364,32 L390,32 L400,32"/></svg>
+                <svg viewBox="0 0 400 64" preserveAspectRatio="none"><path d="M0,32 L30,32 L38,32 L44,8 L50,56 L56,32 L64,32 L90,32 L98,32 L104,14 L110,50 L116,32 L124,32 L150,32 L158,32 L164,20 L170,44 L176,32 L184,32 L210,32 L218,32 L224,6 L230,58 L236,32 L244,32 L270,32 L278,32 L284,16 L290,48 L296,32 L304,32 L330,32 L338,32 L344,10 L350,54 L356,32 L364,32 L390,32 L400,32"/></svg>
+            </div>
+        </div>
+
+        <div class="header">
+            <div class="badge"><span class="ping"></span>MODEL ARMED &middot; XGBOOST / LIGHTGBM</div>
+            <h1>Traffic <em>Scope</em></h1>
+            <p>// Upload a capture. We'll flag what doesn't belong.</p>
+        </div>
+
+        <div class="panel">
+            <div class="corner tl"></div>
+            <div class="corner tr"></div>
+            <div class="corner bl"></div>
+            <div class="corner br"></div>
+
+            <div class="section-label">Ingest Capture</div>
+
+            <form method="POST" enctype="multipart/form-data">
+                <div class="upload-zone">
+                    <div class="port-icon">
+                        <svg viewBox="0 0 40 40" fill="none">
+                            <circle cx="20" cy="20" r="17.5"/>
+                            <path d="M20 10 L20 20 L27 27" stroke-linecap="round" stroke-linejoin="round"/>
+                            <circle class="pin" cx="20" cy="20" r="2"/>
+                        </svg>
+                    </div>
+                    <h3>Drop packet capture</h3>
+                    <p>CICIDS2017 / UNSW-NB15 schema &middot; .csv only</p>
+                    <input type="file" name="file" accept=".csv" required id="fileInput">
+                </div>
+                <div id="file-name"></div>
+                <button type="submit" class="btn"><span>Run Analysis</span></button>
+            </form>
+
+            {% if result %}
+                {% if "ATTACK" in result %}
+                    <div class="result-banner attack"><div class="dot"></div>{{ result }}</div>
+                {% elif "Error" in result or "⚠️" in result %}
+                    <div class="result-banner error"><div class="dot"></div>{{ result }}</div>
+                {% else %}
+                    <div class="result-banner safe"><div class="dot"></div>{{ result }}</div>
+                {% endif %}
+            {% endif %}
+
+            {% if stats %}
+                <div class="readout">
+                   
+                    <div class="readout-grid">
+                        <div class="r-item">
+                            <div class="r-label">Total</div>
+                            <div class="r-value">{{ stats.total }}</div>
+                        </div>
+                        <div class="r-item c-ok">
+                            <div class="r-label">Normal</div>
+                            <div class="r-value">{{ stats.normal }}</div>
+                        </div>
+                        <div class="r-item c-alert">
+                            <div class="r-label">Flagged</div>
+                            <div class="r-value">{{ stats.attack }}</div>
+                        </div>
+                        <div class="r-item c-amber">
+                            <div class="r-label">Flag Rate</div>
+                            <div class="r-value">{{ stats.pct }}%</div>
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+
+        <div class="footer">
+            Traffic Scope &middot; Network Intrusion Detection &middot; UNSW-NB15 Dataset
+        </div>
+
+    </div>
+
+    <script>
+        const input = document.getElementById('fileInput');
+        const label = document.getElementById('file-name');
+        input.addEventListener('change', () => {
+            label.textContent = input.files[0] ? '> ' + input.files[0].name : '';
+        });
