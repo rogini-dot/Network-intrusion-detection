@@ -415,10 +415,7 @@
 
             {% if stats %}
                 <div class="readout">
-                    <div class="meter">
-                        <div class="m-normal" style="flex-grow: {{ stats.normal }}"></div>
-                        <div class="m-attack" style="flex-grow: {{ stats.attack }}"></div>
-                    </div>
+                   
                     <div class="readout-grid">
                         <div class="r-item">
                             <div class="r-label">Total</div>
@@ -453,20 +450,4 @@
         input.addEventListener('change', () => {
             label.textContent = input.files[0] ? '> ' + input.files[0].name : '';
         });
-
-        {% if result %}
-        (function() {
-            const strip = document.getElementById('scopeStrip');
-            {% if "ATTACK" in result %}
-            strip.classList.add('sig-attack');
-            {% elif "Error" in result or "⚠️" in result %}
-            strip.classList.add('sig-warn');
-            {% else %}
-            strip.classList.add('sig-safe');
-            {% endif %}
-        })();
-        {% endif %}
-    </script>
-</body>
-</html>
 <p>Live site working 🚀</p>
